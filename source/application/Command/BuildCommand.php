@@ -11,8 +11,12 @@ use GSpataro\Library\ReadersCollection;
 use GSpataro\Pages\GeneratorsCollection;
 use GSpataro\Contractor\BuildersCollection;
 use GSpataro\Project\Sitemap;
-use SimpleXMLElement;
-use DirectoryIterator;
+use GSpataro\Application\Process\ProcessCleanup;
+use GSpataro\Application\Process\ProcessContents;
+use GSpataro\Application\Process\ProcessMedia;
+use GSpataro\Application\Process\ProcessPages;
+use GSpataro\Application\Process\ProcessSchemas;
+use GSpataro\Application\Process\ProcessSitemap;
 
 final class BuildCommand extends BaseCommand
 {
@@ -60,221 +64,51 @@ final class BuildCommand extends BaseCommand
 
         $this->stopwatch->start();
 
-        $this->processContents();
-        $this->processSchemas();
+        $this->runProcess(
+            new ProcessContents(
+                $this->prototype,
+                $this->readers
+            )
+        );
+
+        $this->runProcess(
+            new ProcessSchemas(
+                $this->prototype,
+                $this->generators,
+                $this->researcher
+            )
+        );
 
         if ($this->argument('cleanup-only') !== false) {
-            $this->buildPages();
+            $this->runProcess(
+                new ProcessPages(
+                    $this->pages,
+                    $this->builders
+                )
+            );
         }
 
         if ($this->argument('view-only') !== false && $this->argument('cleanup-only') !== false) {
-            $this->generateMedia();
+            $this->runProcess(
+                new ProcessMedia(
+                    $this->media
+                )
+            );
         }
 
-        $this->buildSitemapXml();
-        $this->cleanup();
+
+        $this->runProcess(
+            new ProcessSitemap(
+                $this->sitemap
+            )
+        );
+
+        $this->runProcess(
+            new ProcessCleanup(
+                $this->sitemap
+            )
+        );
 
         $this->output->print('{bold}{fg_green}Build completed in ' . $this->stopwatch->stop() . ' seconds!');
-    }
-
-    /**
-     * Process contents from prototype
-     *
-     * @return void
-     */
-
-    private function processContents(): void
-    {
-        $this->output->print('{bold}Processing contents');
-
-        foreach ($this->prototype->get('contents') as $group => $source) {
-            $this->output->print("Working on content group '{$group}'");
-
-            $reader = $this->readers->get($source['reader']);
-            $contents[$group] = $reader->compile($group, $source['path']);
-
-            if ($reader->failed()) {
-                $error = $reader->getError();
-                $this->output->print("{bold}{fg_red}Contents processing failed on group '{$group}'.");
-                $this->output->print('{bold}Error: {clear}' . $error->value);
-                $this->output->print('{bold}Source: {clear}' . $reader->getFailedSource());
-                exit(1);
-            }
-        }
-    }
-
-    /**
-     * Process schemas from prototype
-     *
-     * @return void
-     */
-
-    private function processSchemas(): void
-    {
-        $this->output->print('{bold}Processing schemas');
-
-        foreach ($this->prototype->get('schemas') as $tag => $schema) {
-            $this->output->print("Working on schema '{$tag}'");
-
-            $schema['contents'] = $this->processSchemaContents($schema['contents']);
-
-            $generator = $this->generators->get($schema['generator']);
-            $generator->generate($schema);
-        }
-    }
-
-    /**
-     * Process schema contents
-     *
-     * @param array $contents
-     * @return array
-     */
-
-    public function processSchemaContents(array $contents): array
-    {
-        $output = [];
-
-        if (empty($contents)) {
-            return $output;
-        }
-
-        foreach ($contents as $label => $query) {
-            $research = $this->researcher->start($label, $query['group']);
-
-            if (isset($query['select'])) {
-                $research->select($query['select']);
-            }
-
-            if (!empty($query['where'])) {
-                $field = array_key_first($query['where']);
-                $value = $query['where'][$field];
-                $research->where($field, $value);
-            }
-
-            if (isset($query['skip'])) {
-                $research->select($query['skip']);
-            }
-
-            if (isset($query['limit'])) {
-                $research->limit($query['limit']);
-            }
-
-            if (isset($query['orderBy'])) {
-                $research->orderBy(
-                    $query['orderBy'],
-                    $query['order'] ?? 'asc'
-                );
-            }
-
-            $output[$label] = $research->fetch();
-        }
-
-        return $output;
-    }
-
-    /**
-     * Build pages
-     *
-     * @return void
-     */
-
-    private function buildPages(): void
-    {
-        $this->output->print('{bold}Building pages');
-
-        foreach ($this->pages->getAll() as $page) {
-            $builder = $this->builders->get($page['builder']);
-            $builder->compile($page);
-        }
-    }
-
-    /**
-     * Generate media
-     *
-     * @return void
-     */
-
-    private function generateMedia(): void
-    {
-        $this->output->print('{bold}Generating media');
-
-        $mediaFiles = glob(DIR_MEDIA . '/*.{jpg,jpeg,png}', GLOB_BRACE);
-
-        foreach ($mediaFiles as $mediaFile) {
-            $this->media->resizeMedia($mediaFile);
-        }
-    }
-
-    /**
-     * Build sitemap.xml file
-     *
-     * @return void
-     */
-
-    private function buildSitemapXml(): void
-    {
-        $this->output->print('{bold}Generating sitemap.xml');
-
-        $xml = new SimpleXMLElement('<?xml version="1.0" encoding="UTF-8"?><urlset></urlset>');
-        $xml->addAttribute('xmlns', 'http://www.sitemaps.org/schemas/sitemap/0.9');
-
-        $excluded = ['/404', '/darkside'];
-
-        foreach ($this->sitemap->getAll() as $url) {
-            if (str_ends_with($url, '/index')) {
-                $url = substr($url, 0, strlen('index') * -1);
-            }
-
-            if (in_array($url, $excluded)) {
-                continue;
-            }
-
-            $urlElement = $xml->addChild('url');
-            $urlElement->addChild('loc', 'https://giuseppespataro.it' . $url);
-            $urlElement->addChild('lastmod', date('c'));
-        }
-
-        $xml->asXml(DIR_OUTPUT . '/sitemap.xml');
-    }
-
-    /**
-     * Delete files that are no more present in the project
-     *
-     * @param string $directory
-     * @return void
-     */
-
-    private function cleanup($directory = DIR_OUTPUT): void
-    {
-        if ($directory === DIR_OUTPUT) {
-            $this->output->print('{bold}Cleaning up');
-        }
-
-        $sitemap = array_values($this->sitemap->getAll());
-        $outputDirectory = new DirectoryIterator($directory);
-        $excluded = ['.vite', 'assets', '.htaccess', 'sitemap.xml', 'favicon.png', 'favicon-dark.png', 'media'];
-
-        foreach ($outputDirectory as $item) {
-            if ($item->isDot()) {
-                continue;
-            }
-
-            if (in_array($item->getBasename(), $excluded)) {
-                continue;
-            }
-
-            $itemPath = $item->isFile()
-                ? substr($item->getPathname(), strlen(DIR_OUTPUT), strlen('.html') * -1)
-                : substr($item->getPathname(), strlen(DIR_OUTPUT));
-
-            if ($item->isFile() && !in_array($itemPath, $sitemap)) {
-                unlink($item->getPathname());
-                continue;
-            }
-
-            if ($item->isDir()) {
-                $this->cleanup($item->getPathname());
-            }
-        }
     }
 }
