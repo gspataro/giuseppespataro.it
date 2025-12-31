@@ -7,8 +7,6 @@
         "email": "info@giuseppespataro.it",
         "friendly_urls": true
     },
-    "languages": ["it"],
-    "default_language": "it",
     "contents": {
         "articles": "markdown:articles/*.md",
         "articles_cats": "json:articles_categories.json",
