@@ -6,9 +6,8 @@
 /vendor
 /node_modules
 
-/contents/data/*
-
-/contents/media/*
+/contents/*
+!/contents/.gitkeep
 
 /public/*
 !/public/.htaccess
