@@ -16,7 +16,7 @@ jobs:
           passphrase: ${{secrets.SSH_PASSPHRASE}}
 
           script: |
-            cd Portfolio
+            cd giuseppespataro.it
             git pull
             npm install
             composer install
