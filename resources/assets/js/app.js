@@ -17,10 +17,10 @@ if (window.location.pathname === '/' || window.location.pathname === '/index.htm
     });
 }
 
-if (window.location.pathname === '/chi-sono' || window.location.pathname === '/chi-sono.html') {
+/*if (window.location.pathname === '/chi-sono' || window.location.pathname === '/chi-sono.html') {
     import('./about').then((module) => {
         module.initAbout();
     }).catch((error) => {
         console.error(`Failed to load about module: ${error.message}`);
     });
-}
+}*/
