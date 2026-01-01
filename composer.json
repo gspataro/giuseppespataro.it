@@ -13,6 +13,6 @@
         "gspataro/orchestra": "^1.0"
     },
     "scripts": {
-        "build": "npm run build && ./gspataro.php build"
+        "build": "npm run build && php solista build"
     }
 }
